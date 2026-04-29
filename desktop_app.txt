@@ -1,0 +1,132 @@
+Images.py
+    methods - 
+        convert_image()
+        compress_image()
+        resize_image()
+        batch_process()
+
+Videos.py
+    └─ methods -
+        convert_video()
+        compress_video()
+        extract_audio()
+        trim_video()
+
+UI - customtkinter (ctk)
+heading : |--- choose your type of media ---|
+    -> Image Work
+    -> Video Work
+    file picker
+    folder picker
+    output path selector
+    quality slider
+    dropdown for output format
+    progress bar
+    success/error popup
+    preview info
+
+
+------------------------------------------------------------------------------------------
+    Project: Media Utility App
+A desktop app made using Python that helps users:
+- convert image formats
+- compress images
+- convert videos
+- compress videos
+- extract audio from videos
+- manage media files easily
+
+Technologies Used
+1. CustomTkinter
+Used for modern desktop app UI.
+2. Pillow
+Used for image processing:
+- image conversion (png,jpg,jpeg,heic,webp,ico,etc other famous extensions)
+- resizing
+- compression
+- quality control
+3. FFmpeg
+Used for video/audio processing:
+- video conversion (mov,mp4,mkv,gif,webm,avi,etc)
+- compression
+- trimming
+- audio extraction
+
+4. PyInstaller
+Used to convert Python project into .exe
+Project Structure
+MediaTool/
+│
+├── main.py
+├── Images.py
+├── Videos.py
+├── ui/
+│   ├── image_ui.py
+│   └── video_ui.py
+├── assets/
+├── output/
+├── temp/
+├── requirements.txt
+└── README.md
+
+Main Files :
+main.py
+- Starting point of the app
+- Shows Image Tools and Video Tools buttons
+
+Images.py
+- Handles image backend logic
+Images.py
+    └─methods - 
+        convert_image()
+        compress_image()
+        resize_image()
+        batch_process()
+
+Videos.py
+- Handles video backend logic
+Videos.py
+    └─ methods -
+        convert_video()
+        compress_video()
+        extract_audio()
+        trim_video()
+
+Development Phases
+Phase 1: Image Converter (a option slider to choose target format and take input format from input image by user.)
+- PNG/JPG/WebP/HEIC/etc to PNG/JPG/WebP/HEIC/etc
+
+Phase 2: Image Compression
+- quality slider
+- size reduction with maintained quality
+
+Phase 3: Batch Conversion
+- convert complete folders at once
+
+Phase 4: Video Converter
+- MP4 to AVI
+- MKV to MP4
+- MOV to MP4
+
+Phase 5: Video Compression
+- reduce video size while maintaining quality
+
+Phase 6: Audio Extraction
+- video.mp4 to audio.mp3
+
+Advanced Features
+- dark mode
+- drag and drop
+- recent history
+- progress bar
+- multithreading
+- batch queue
+- settings save
+
+Important Rule
+Build one feature fully first.
+Start with PNG to JPG conversion first.
+Final Goal
+A strong portfolio project:
+Media Utility Desktop App
+Useful for real life, resume, and interviews.
