@@ -13,9 +13,12 @@ from Images import (
     ensure_image_support_for_path,
     file_size_text,
 )
+from Videos import SUPPORTED_VIDEO_INPUTS, SUPPORTED_VIDEO_OUTPUTS, convert_video
 
 
 APP_TITLE = "Media Utility Desktop App"
+IMAGE_MODE = "Image Work"
+VIDEO_MODE = "Video Work"
 IMAGE_INPUT = [
     ("Image files", "*.png *.jpg *.jpeg *.webp *.heic *.heif *.ico"),
     ("PNG images", "*.png"),
@@ -25,9 +28,21 @@ IMAGE_INPUT = [
     ("ICO images", "*.ico"),
     ("All files", "*.*"),
 ]
+VIDEO_INPUT = [
+    ("Video files", "*.mp4 *.mov *.mkv *.avi *.webm *.mpeg *.mpg *.gif"),
+    ("MP4 videos", "*.mp4"),
+    ("MOV videos", "*.mov"),
+    ("MKV videos", "*.mkv"),
+    ("AVI videos", "*.avi"),
+    ("WebM videos", "*.webm"),
+    ("GIF files", "*.gif"),
+    ("All files", "*.*"),
+]
 OUTPUT_FORMATS = ["JPG", "PNG", "WebP", "HEIC", "ICO"]
+VIDEO_OUTPUT_FORMATS = ["MP4", "MOV", "MKV", "AVI", "WebM", "GIF"]
 CONVERSION_FORMAT_TEXT = "JPG, PNG, WebP, HEIC, or ICO"
 COMPRESSION_FORMAT_TEXT = "JPG, PNG, or WebP"
+VIDEO_FORMAT_TEXT = "MP4, MOV, MKV, AVI, WebM, MPEG, or GIF"
 
 
 class MediaUtilityApp(ctk.CTk):
@@ -45,6 +60,7 @@ class MediaUtilityApp(ctk.CTk):
         self.input_paths: list[Path] = []
         self.output_dir = ctk.StringVar(value=str(Path.cwd() / "output"))
         self.output_format = ctk.StringVar(value="JPG")
+        self.media_mode = ctk.StringVar(value=IMAGE_MODE)
         self.image_tool = ctk.StringVar(value="Convert")
         self.conversion_mode = ctk.StringVar(value="Single File")
         self.quality = ctk.IntVar(value=90)
@@ -77,10 +93,10 @@ class MediaUtilityApp(ctk.CTk):
 
         self.mode_tabs = ctk.CTkSegmentedButton(
             header,
-            values=["Image Work", "Video Work"],
+            values=[IMAGE_MODE, VIDEO_MODE],
             command=self._mode_changed,
         )
-        self.mode_tabs.set("Image Work")
+        self.mode_tabs.set(IMAGE_MODE)
         self.mode_tabs.grid(row=0, column=1, rowspan=2, sticky="e", padx=(16, 0))
 
         body = ctk.CTkFrame(self, corner_radius=8)
@@ -238,12 +254,35 @@ class MediaUtilityApp(ctk.CTk):
         self.convert_button.grid(row=9, column=0, sticky="ew", pady=(10, 0))
 
     def _mode_changed(self, value: str) -> None:
-        if value == "Video Work":
-            self.mode_tabs.set("Image Work")
-            messagebox.showinfo(
-                "Coming soon",
-                "Video tools are planned next. Image conversion and compression are available now.",
-            )
+        self.media_mode.set(value)
+        self.progress.set(0)
+        self._clear_selection()
+
+        if value == VIDEO_MODE:
+            self.output_format.set("MP4")
+            self.tool_tabs.configure(values=["Convert"])
+            self.tool_tabs.set("Convert")
+            self.image_tool.set("Convert")
+            self.mode_label.configure(state="disabled")
+            self.conversion_mode_tabs.configure(state="disabled")
+            self.format_menu.configure(values=VIDEO_OUTPUT_FORMATS, state="normal")
+            self.input_label.configure(text="Input Video")
+            self.format_label.configure(text="Output Format")
+            self.convert_button.configure(text=self._convert_button_text())
+            self.status.set(f"Choose a {VIDEO_FORMAT_TEXT} file to convert.")
+            return
+
+        self.output_format.set("JPG")
+        self.tool_tabs.configure(values=["Convert", "Compress"])
+        self.tool_tabs.set("Convert")
+        self.image_tool.set("Convert")
+        self.mode_label.configure(state="normal")
+        self.conversion_mode_tabs.configure(state="normal")
+        self.format_menu.configure(values=OUTPUT_FORMATS, state="normal")
+        self.input_label.configure(text="Input Image")
+        self.format_label.configure(text="Output Format")
+        self.convert_button.configure(text=self._convert_button_text())
+        self.status.set(f"Choose a {CONVERSION_FORMAT_TEXT} image to convert.")
 
     def _quality_changed(self, value: float) -> None:
         quality = int(value)
@@ -253,6 +292,11 @@ class MediaUtilityApp(ctk.CTk):
     def _tool_changed(self, value: str) -> None:
         self.progress.set(0)
         self._clear_selection()
+        if self.media_mode.get() == VIDEO_MODE:
+            self.tool_tabs.set("Convert")
+            self.status.set(f"Choose a {VIDEO_FORMAT_TEXT} file to convert.")
+            return
+
         if value == "Compress":
             self.conversion_mode.set("Single File")
             self.mode_label.configure(state="disabled")
@@ -271,6 +315,9 @@ class MediaUtilityApp(ctk.CTk):
             self.status.set(f"Choose a {CONVERSION_FORMAT_TEXT} image to convert.")
 
     def _conversion_mode_changed(self, value: str) -> None:
+        if self.media_mode.get() == VIDEO_MODE:
+            return
+
         self.progress.set(0)
         self._clear_selection()
         if value == "Batch Files":
@@ -288,6 +335,18 @@ class MediaUtilityApp(ctk.CTk):
         return f"Convert to {self.output_format.get()}"
 
     def pick_file(self) -> None:
+        if self.media_mode.get() == VIDEO_MODE:
+            path = filedialog.askopenfilename(title="Select video to convert", filetypes=VIDEO_INPUT)
+            if not path:
+                return
+
+            self.input_paths = [Path(path)]
+            self.input_path.set(str(self.input_paths[0]))
+            self.status.set(f"Video selected. Ready to convert to {self.output_format.get()}.")
+            self.progress.set(0)
+            self._update_video_preview(self.input_paths[0])
+            return
+
         if self.image_tool.get() == "Compress":
             title = "Select image to compress"
             paths = filedialog.askopenfilename(title=title, filetypes=IMAGE_INPUT)
@@ -326,6 +385,10 @@ class MediaUtilityApp(ctk.CTk):
             self.output_dir.set(path)
 
     def process_selected_image(self) -> None:
+        if self.media_mode.get() == VIDEO_MODE:
+            self.process_selected_video()
+            return
+
         input_paths = self.input_paths or [Path(self.input_path.get().strip())]
         output_dir = Path(self.output_dir.get().strip())
         tool = self.image_tool.get()
@@ -486,6 +549,60 @@ class MediaUtilityApp(ctk.CTk):
         self.convert_button.configure(state="normal", text=button_text)
         messagebox.showerror("Processing failed", error)
 
+    def process_selected_video(self) -> None:
+        input_path = self.input_paths[0] if self.input_paths else Path(self.input_path.get().strip())
+        output_dir = Path(self.output_dir.get().strip())
+        output_format = self.output_format.get().lower()
+
+        if not str(input_path).strip() or not input_path.exists():
+            messagebox.showerror("Missing file", "Please choose a video first.")
+            return
+
+        if input_path.suffix.lower() not in SUPPORTED_VIDEO_INPUTS:
+            messagebox.showerror("Unsupported file", f"Video conversion supports {VIDEO_FORMAT_TEXT} files.")
+            return
+
+        if output_format not in SUPPORTED_VIDEO_OUTPUTS:
+            messagebox.showerror("Unsupported format", "Choose MP4, MOV, MKV, AVI, WebM, or GIF as the output format.")
+            return
+
+        self.convert_button.configure(state="disabled", text="Converting...")
+        self.status.set("Converting video with FFmpeg...")
+        self.progress.set(0.35)
+
+        thread = threading.Thread(
+            target=self._video_worker,
+            args=(input_path, output_dir, output_format, self.quality.get()),
+            daemon=True,
+        )
+        thread.start()
+
+    def _video_worker(self, input_path: Path, output_dir: Path, output_format: str, quality: int) -> None:
+        try:
+            output_path = convert_video(
+                input_path,
+                output_dir=output_dir,
+                output_format=output_format,
+                quality=quality,
+            )
+        except Exception as exc:
+            self.after(0, self._conversion_failed, str(exc))
+            return
+
+        self.after(0, self._video_conversion_finished, input_path, output_path)
+
+    def _video_conversion_finished(self, input_path: Path, output_path: Path) -> None:
+        self.progress.set(1)
+        self.status.set(f"Saved: {output_path}")
+        self.convert_button.configure(state="normal", text=self._convert_button_text())
+        self._set_preview(
+            "Video conversion complete.\n\n"
+            f"Original: {file_size_text(input_path)}\n"
+            f"Converted: {file_size_text(output_path)}\n\n"
+            f"Output:\n{output_path}"
+        )
+        messagebox.showinfo("Success", f"Video converted successfully:\n{output_path}")
+
     def _update_preview(self, path: Path) -> None:
         try:
             from PIL import Image
@@ -503,6 +620,15 @@ class MediaUtilityApp(ctk.CTk):
         except Exception as exc:
             details = [f"Could not read image details.", str(exc)]
 
+        self._set_preview("\n".join(details))
+
+    def _update_video_preview(self, path: Path) -> None:
+        details = [
+            f"Name: {path.name}",
+            f"Type: {path.suffix.upper().lstrip('.') or 'Video'}",
+            f"File size: {file_size_text(path)}",
+            f"Input: {path}",
+        ]
         self._set_preview("\n".join(details))
 
     def _set_preview(self, text: str) -> None:
