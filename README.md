@@ -4,7 +4,7 @@ A CustomTkinter desktop app for practical media utilities.
 
 ## Current Feature
 
-- PNG to JPG conversion
+- Image conversion between JPG, PNG, WebP, HEIC, and ICO
 - Image compression for JPG, PNG, and WebP
 - Output folder picker
 - Quality slider

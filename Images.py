@@ -4,8 +4,28 @@ from typing import Iterable
 from PIL import Image
 
 
-SUPPORTED_IMAGE_OUTPUTS = {"jpg", "jpeg", "png", "webp"}
+SUPPORTED_IMAGE_OUTPUTS = {"jpg", "jpeg", "png", "webp", "heic", "heif", "ico"}
+CONVERTIBLE_IMAGE_INPUTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".ico"}
 COMPRESSIBLE_IMAGE_INPUTS = {".jpg", ".jpeg", ".png", ".webp"}
+HEIC_FORMATS = {"heic", "heif"}
+
+
+def _register_heif_support() -> None:
+    try:
+        from pillow_heif import register_heif_opener
+    except ImportError as exc:
+        raise ImportError(
+            "HEIC/HEIF support requires pillow-heif. Install dependencies with: "
+            "pip install -r requirements.txt"
+        ) from exc
+
+    register_heif_opener()
+
+
+def ensure_image_support_for_path(path: str | Path) -> None:
+    """Register optional image plugins needed for this file."""
+    if Path(path).suffix.lower() in {".heic", ".heif"}:
+        _register_heif_support()
 
 
 def convert_image(
@@ -22,9 +42,15 @@ def convert_image(
     normalized_format = output_format.lower().lstrip(".")
     if normalized_format == "jpeg":
         normalized_format = "jpg"
+    if normalized_format == "heif":
+        normalized_format = "heic"
 
     if normalized_format not in SUPPORTED_IMAGE_OUTPUTS:
         raise ValueError(f"Unsupported output format: {output_format}")
+
+    ensure_image_support_for_path(source)
+    if normalized_format in HEIC_FORMATS:
+        _register_heif_support()
 
     destination_dir = Path(output_dir) if output_dir else source.parent
     destination_dir.mkdir(parents=True, exist_ok=True)
@@ -94,6 +120,7 @@ def resize_image(
     source = Path(input_path)
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    ensure_image_support_for_path(source)
 
     with Image.open(source) as image:
         if keep_aspect:
@@ -133,6 +160,12 @@ def _prepare_for_format(image: Image.Image, output_format: str) -> Image.Image:
     if output_format in {"jpg", "jpeg"}:
         return image.convert("RGB")
 
+    if output_format in HEIC_FORMATS and image.mode == "P":
+        return image.convert("RGBA")
+
+    if output_format == "ico" and image.mode not in {"RGB", "RGBA"}:
+        return image.convert("RGBA")
+
     return image.copy()
 
 
@@ -147,5 +180,11 @@ def _save_options(output_format: str, quality: int) -> dict[str, object]:
 
     if output_format == "png":
         return {"format": "PNG", "optimize": True}
+
+    if output_format in HEIC_FORMATS:
+        return {"format": "HEIF", "quality": bounded_quality}
+
+    if output_format == "ico":
+        return {"format": "ICO"}
 
     return {}

@@ -4,18 +4,30 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from Images import compress_image, convert_image, file_size_text
+from Images import (
+    COMPRESSIBLE_IMAGE_INPUTS,
+    CONVERTIBLE_IMAGE_INPUTS,
+    SUPPORTED_IMAGE_OUTPUTS,
+    compress_image,
+    convert_image,
+    ensure_image_support_for_path,
+    file_size_text,
+)
 
 
 APP_TITLE = "Media Utility Desktop App"
-PNG_INPUT = [("PNG images", "*.png"), ("All files", "*.*")]
 IMAGE_INPUT = [
-    ("Image files", "*.png *.jpg *.jpeg *.webp"),
+    ("Image files", "*.png *.jpg *.jpeg *.webp *.heic *.heif *.ico"),
     ("PNG images", "*.png"),
     ("JPEG images", "*.jpg *.jpeg"),
     ("WebP images", "*.webp"),
+    ("HEIC images", "*.heic *.heif"),
+    ("ICO images", "*.ico"),
     ("All files", "*.*"),
 ]
+OUTPUT_FORMATS = ["JPG", "PNG", "WebP", "HEIC", "ICO"]
+CONVERSION_FORMAT_TEXT = "JPG, PNG, WebP, HEIC, or ICO"
+COMPRESSION_FORMAT_TEXT = "JPG, PNG, or WebP"
 
 
 class MediaUtilityApp(ctk.CTk):
@@ -23,8 +35,8 @@ class MediaUtilityApp(ctk.CTk):
         super().__init__()
 
         self.title(APP_TITLE)
-        self.geometry("840x560")
-        self.minsize(760, 520)
+        self.geometry("700x660")    # w,h
+        self.minsize(650, 300)   # w,h
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -34,7 +46,7 @@ class MediaUtilityApp(ctk.CTk):
         self.output_format = ctk.StringVar(value="JPG")
         self.image_tool = ctk.StringVar(value="Convert")
         self.quality = ctk.IntVar(value=90)
-        self.status = ctk.StringVar(value="Choose a PNG image to begin.")
+        self.status = ctk.StringVar(value=f"Choose a {CONVERSION_FORMAT_TEXT} image to begin.")
 
         self._build_layout()
 
@@ -48,7 +60,7 @@ class MediaUtilityApp(ctk.CTk):
 
         title = ctk.CTkLabel(
             header,
-            text="Media Utility",
+            text="MediaPrime: Media Utility App",
             font=ctk.CTkFont(size=30, weight="bold"),
         )
         title.grid(row=0, column=0, sticky="w")
@@ -128,7 +140,7 @@ class MediaUtilityApp(ctk.CTk):
     def _add_file_picker(self, parent: ctk.CTkFrame) -> None:
         self.input_label = ctk.CTkLabel(
             parent,
-            text="Input PNG",
+            text="Input Image",
             font=ctk.CTkFont(weight="bold"),
         )
         self.input_label.grid(row=2, column=0, sticky="w")
@@ -174,7 +186,12 @@ class MediaUtilityApp(ctk.CTk):
         self.format_label.grid(
             row=0, column=0, sticky="w"
         )
-        self.format_menu = ctk.CTkOptionMenu(options, values=["JPG"], variable=self.output_format)
+        self.format_menu = ctk.CTkOptionMenu(
+            options,
+            values=OUTPUT_FORMATS,
+            variable=self.output_format,
+            command=self._format_changed,
+        )
         self.format_menu.grid(row=1, column=0, sticky="ew", pady=(8, 18), padx=(0, 10))
 
         ctk.CTkLabel(options, text="Quality", font=ctk.CTkFont(weight="bold")).grid(
@@ -195,7 +212,7 @@ class MediaUtilityApp(ctk.CTk):
 
         self.convert_button = ctk.CTkButton(
             parent,
-            text="Convert PNG to JPG",
+            text=self._convert_button_text(),
             height=44,
             command=self.process_selected_image,
         )
@@ -206,7 +223,7 @@ class MediaUtilityApp(ctk.CTk):
             self.mode_tabs.set("Image Work")
             messagebox.showinfo(
                 "Coming soon",
-                "Video tools are planned next. The first complete feature is PNG to JPG conversion.",
+                "Video tools are planned next. Image conversion and compression are available now.",
             )
 
     def _quality_changed(self, value: float) -> None:
@@ -221,20 +238,26 @@ class MediaUtilityApp(ctk.CTk):
             self.format_label.configure(text="Output Format")
             self.format_menu.configure(state="disabled")
             self.convert_button.configure(text="Compress Image")
-            self.status.set("Choose a JPG, PNG, or WebP image to compress.")
+            self.status.set(f"Choose a {COMPRESSION_FORMAT_TEXT} image to compress.")
         else:
-            self.input_label.configure(text="Input PNG")
+            self.input_label.configure(text="Input Image")
             self.format_menu.configure(state="normal")
-            self.convert_button.configure(text="Convert PNG to JPG")
-            self.status.set("Choose a PNG image to begin.")
+            self.convert_button.configure(text=self._convert_button_text())
+            self.status.set(f"Choose a {CONVERSION_FORMAT_TEXT} image to convert.")
+
+    def _format_changed(self, _value: str) -> None:
+        if self.image_tool.get() == "Convert":
+            self.convert_button.configure(text=self._convert_button_text())
+
+    def _convert_button_text(self) -> str:
+        return f"Convert to {self.output_format.get()}"
 
     def pick_file(self) -> None:
         if self.image_tool.get() == "Compress":
             title = "Select image to compress"
-            filetypes = IMAGE_INPUT
         else:
-            title = "Select PNG image"
-            filetypes = PNG_INPUT
+            title = "Select image to convert"
+        filetypes = IMAGE_INPUT
 
         path = filedialog.askopenfilename(title=title, filetypes=filetypes)
         if not path:
@@ -244,7 +267,7 @@ class MediaUtilityApp(ctk.CTk):
         if self.image_tool.get() == "Compress":
             self.status.set("Image selected. Ready to compress.")
         else:
-            self.status.set("PNG selected. Ready to convert.")
+            self.status.set(f"Image selected. Ready to convert to {self.output_format.get()}.")
         self.progress.set(0)
         self._update_preview(Path(path))
 
@@ -257,17 +280,22 @@ class MediaUtilityApp(ctk.CTk):
         input_path = Path(self.input_path.get().strip())
         output_dir = Path(self.output_dir.get().strip())
         tool = self.image_tool.get()
+        output_format = self.output_format.get().lower()
 
         if not input_path.exists():
             messagebox.showerror("Missing file", "Please choose an image first.")
             return
 
-        if tool == "Convert" and input_path.suffix.lower() != ".png":
-            messagebox.showerror("Unsupported file", "Phase 1 supports PNG input only.")
+        if tool == "Convert" and input_path.suffix.lower() not in CONVERTIBLE_IMAGE_INPUTS:
+            messagebox.showerror("Unsupported file", f"Conversion supports {CONVERSION_FORMAT_TEXT} images.")
             return
 
-        if tool == "Compress" and input_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
-            messagebox.showerror("Unsupported file", "Compression supports JPG, PNG, and WebP images.")
+        if tool == "Convert" and output_format not in SUPPORTED_IMAGE_OUTPUTS:
+            messagebox.showerror("Unsupported format", f"Choose {CONVERSION_FORMAT_TEXT} as the output format.")
+            return
+
+        if tool == "Compress" and input_path.suffix.lower() not in COMPRESSIBLE_IMAGE_INPUTS:
+            messagebox.showerror("Unsupported file", f"Compression supports {COMPRESSION_FORMAT_TEXT} images.")
             return
 
         busy_text = "Compressing..." if tool == "Compress" else "Converting..."
@@ -277,17 +305,29 @@ class MediaUtilityApp(ctk.CTk):
 
         thread = threading.Thread(
             target=self._image_worker,
-            args=(tool, input_path, output_dir, self.quality.get()),
+            args=(tool, input_path, output_dir, output_format, self.quality.get()),
             daemon=True,
         )
         thread.start()
 
-    def _image_worker(self, tool: str, input_path: Path, output_dir: Path, quality: int) -> None:
+    def _image_worker(
+        self,
+        tool: str,
+        input_path: Path,
+        output_dir: Path,
+        output_format: str,
+        quality: int,
+    ) -> None:
         try:
             if tool == "Compress":
                 output_path = compress_image(input_path, output_dir=output_dir, quality=quality)
             else:
-                output_path = convert_image(input_path, output_dir=output_dir, output_format="jpg", quality=quality)
+                output_path = convert_image(
+                    input_path,
+                    output_dir=output_dir,
+                    output_format=output_format,
+                    quality=quality,
+                )
         except Exception as exc:
             self.after(0, self._conversion_failed, str(exc))
             return
@@ -297,7 +337,7 @@ class MediaUtilityApp(ctk.CTk):
     def _conversion_finished(self, tool: str, input_path: Path, output_path: Path) -> None:
         self.progress.set(1)
         self.status.set(f"Saved: {output_path}")
-        button_text = "Compress Image" if tool == "Compress" else "Convert PNG to JPG"
+        button_text = "Compress Image" if tool == "Compress" else self._convert_button_text()
         self.convert_button.configure(state="normal", text=button_text)
 
         if tool == "Compress":
@@ -319,7 +359,7 @@ class MediaUtilityApp(ctk.CTk):
     def _conversion_failed(self, error: str) -> None:
         self.progress.set(0)
         self.status.set("Conversion failed.")
-        button_text = "Compress Image" if self.image_tool.get() == "Compress" else "Convert PNG to JPG"
+        button_text = "Compress Image" if self.image_tool.get() == "Compress" else self._convert_button_text()
         self.convert_button.configure(state="normal", text=button_text)
         messagebox.showerror("Processing failed", error)
 
@@ -327,6 +367,7 @@ class MediaUtilityApp(ctk.CTk):
         try:
             from PIL import Image
 
+            ensure_image_support_for_path(path)
             with Image.open(path) as image:
                 details = [
                     f"Name: {path.name}",
