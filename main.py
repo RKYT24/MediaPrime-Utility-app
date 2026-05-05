@@ -42,9 +42,11 @@ class MediaUtilityApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         self.input_path = ctk.StringVar()
+        self.input_paths: list[Path] = []
         self.output_dir = ctk.StringVar(value=str(Path.cwd() / "output"))
         self.output_format = ctk.StringVar(value="JPG")
         self.image_tool = ctk.StringVar(value="Convert")
+        self.conversion_mode = ctk.StringVar(value="Single File")
         self.quality = ctk.IntVar(value=90)
         self.status = ctk.StringVar(value=f"Choose a {CONVERSION_FORMAT_TEXT} image to begin.")
 
@@ -92,6 +94,7 @@ class MediaUtilityApp(ctk.CTk):
         controls.grid_columnconfigure(0, weight=1)
 
         self._add_tool_picker(controls)
+        self._add_conversion_mode_picker(controls)
         self._add_file_picker(controls)
         self._add_output_picker(controls)
         self._add_conversion_controls(controls)
@@ -137,16 +140,32 @@ class MediaUtilityApp(ctk.CTk):
         )
         self.tool_tabs.grid(row=1, column=0, sticky="ew", pady=(8, 18))
 
+    def _add_conversion_mode_picker(self, parent: ctk.CTkFrame) -> None:
+        self.mode_label = ctk.CTkLabel(
+            parent,
+            text="Conversion Mode",
+            font=ctk.CTkFont(weight="bold"),
+        )
+        self.mode_label.grid(row=2, column=0, sticky="w")
+
+        self.conversion_mode_tabs = ctk.CTkSegmentedButton(
+            parent,
+            values=["Single File", "Batch Files"],
+            variable=self.conversion_mode,
+            command=self._conversion_mode_changed,
+        )
+        self.conversion_mode_tabs.grid(row=3, column=0, sticky="ew", pady=(8, 18))
+
     def _add_file_picker(self, parent: ctk.CTkFrame) -> None:
         self.input_label = ctk.CTkLabel(
             parent,
             text="Input Image",
             font=ctk.CTkFont(weight="bold"),
         )
-        self.input_label.grid(row=2, column=0, sticky="w")
+        self.input_label.grid(row=4, column=0, sticky="w")
 
         row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.grid(row=3, column=0, sticky="ew", pady=(8, 18))
+        row.grid(row=5, column=0, sticky="ew", pady=(8, 18))
         row.grid_columnconfigure(0, weight=1)
 
         ctk.CTkEntry(row, textvariable=self.input_path).grid(
@@ -158,11 +177,11 @@ class MediaUtilityApp(ctk.CTk):
 
     def _add_output_picker(self, parent: ctk.CTkFrame) -> None:
         ctk.CTkLabel(parent, text="Output Folder", font=ctk.CTkFont(weight="bold")).grid(
-            row=4, column=0, sticky="w"
+            row=6, column=0, sticky="w"
         )
 
         row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.grid(row=5, column=0, sticky="ew", pady=(8, 18))
+        row.grid(row=7, column=0, sticky="ew", pady=(8, 18))
         row.grid_columnconfigure(0, weight=1)
 
         ctk.CTkEntry(row, textvariable=self.output_dir).grid(
@@ -174,7 +193,7 @@ class MediaUtilityApp(ctk.CTk):
 
     def _add_conversion_controls(self, parent: ctk.CTkFrame) -> None:
         options = ctk.CTkFrame(parent, fg_color="transparent")
-        options.grid(row=6, column=0, sticky="ew")
+        options.grid(row=8, column=0, sticky="ew")
         options.grid_columnconfigure(0, weight=1)
         options.grid_columnconfigure(1, weight=1)
 
@@ -216,7 +235,7 @@ class MediaUtilityApp(ctk.CTk):
             height=44,
             command=self.process_selected_image,
         )
-        self.convert_button.grid(row=7, column=0, sticky="ew", pady=(10, 0))
+        self.convert_button.grid(row=9, column=0, sticky="ew", pady=(10, 0))
 
     def _mode_changed(self, value: str) -> None:
         if value == "Video Work":
@@ -233,16 +252,32 @@ class MediaUtilityApp(ctk.CTk):
 
     def _tool_changed(self, value: str) -> None:
         self.progress.set(0)
+        self._clear_selection()
         if value == "Compress":
+            self.conversion_mode.set("Single File")
+            self.mode_label.configure(state="disabled")
+            self.conversion_mode_tabs.configure(state="disabled")
             self.input_label.configure(text="Input Image")
             self.format_label.configure(text="Output Format")
             self.format_menu.configure(state="disabled")
             self.convert_button.configure(text="Compress Image")
             self.status.set(f"Choose a {COMPRESSION_FORMAT_TEXT} image to compress.")
         else:
+            self.mode_label.configure(state="normal")
+            self.conversion_mode_tabs.configure(state="normal")
             self.input_label.configure(text="Input Image")
             self.format_menu.configure(state="normal")
             self.convert_button.configure(text=self._convert_button_text())
+            self.status.set(f"Choose a {CONVERSION_FORMAT_TEXT} image to convert.")
+
+    def _conversion_mode_changed(self, value: str) -> None:
+        self.progress.set(0)
+        self._clear_selection()
+        if value == "Batch Files":
+            self.input_label.configure(text="Input Images")
+            self.status.set(f"Choose multiple {CONVERSION_FORMAT_TEXT} images to convert.")
+        else:
+            self.input_label.configure(text="Input Image")
             self.status.set(f"Choose a {CONVERSION_FORMAT_TEXT} image to convert.")
 
     def _format_changed(self, _value: str) -> None:
@@ -255,21 +290,35 @@ class MediaUtilityApp(ctk.CTk):
     def pick_file(self) -> None:
         if self.image_tool.get() == "Compress":
             title = "Select image to compress"
+            paths = filedialog.askopenfilename(title=title, filetypes=IMAGE_INPUT)
         else:
-            title = "Select image to convert"
-        filetypes = IMAGE_INPUT
+            if self.conversion_mode.get() == "Batch Files":
+                title = "Select images to convert"
+                paths = filedialog.askopenfilenames(title=title, filetypes=IMAGE_INPUT)
+            else:
+                title = "Select image to convert"
+                paths = filedialog.askopenfilename(title=title, filetypes=IMAGE_INPUT)
 
-        path = filedialog.askopenfilename(title=title, filetypes=filetypes)
-        if not path:
+        if not paths:
             return
 
-        self.input_path.set(path)
+        if isinstance(paths, tuple):
+            self.input_paths = [Path(path) for path in paths]
+        else:
+            self.input_paths = [Path(paths)]
+
+        self.input_path.set(self._input_display_text())
         if self.image_tool.get() == "Compress":
             self.status.set("Image selected. Ready to compress.")
+        elif self.conversion_mode.get() == "Batch Files":
+            self.status.set(f"{len(self.input_paths)} images selected. Ready to convert to {self.output_format.get()}.")
         else:
             self.status.set(f"Image selected. Ready to convert to {self.output_format.get()}.")
         self.progress.set(0)
-        self._update_preview(Path(path))
+        if len(self.input_paths) == 1:
+            self._update_preview(self.input_paths[0])
+        else:
+            self._update_batch_preview(self.input_paths)
 
     def pick_output_dir(self) -> None:
         path = filedialog.askdirectory(title="Select output folder")
@@ -277,35 +326,52 @@ class MediaUtilityApp(ctk.CTk):
             self.output_dir.set(path)
 
     def process_selected_image(self) -> None:
-        input_path = Path(self.input_path.get().strip())
+        input_paths = self.input_paths or [Path(self.input_path.get().strip())]
         output_dir = Path(self.output_dir.get().strip())
         tool = self.image_tool.get()
         output_format = self.output_format.get().lower()
+        is_batch = tool == "Convert" and self.conversion_mode.get() == "Batch Files"
 
-        if not input_path.exists():
-            messagebox.showerror("Missing file", "Please choose an image first.")
+        if not input_paths or not str(input_paths[0]).strip():
+            messagebox.showerror("Missing file", "Please choose image files first.")
             return
 
-        if tool == "Convert" and input_path.suffix.lower() not in CONVERTIBLE_IMAGE_INPUTS:
-            messagebox.showerror("Unsupported file", f"Conversion supports {CONVERSION_FORMAT_TEXT} images.")
+        missing_paths = [path for path in input_paths if not path.exists()]
+        if missing_paths:
+            messagebox.showerror("Missing file", f"Could not find: {missing_paths[0]}")
+            return
+
+        unsupported_paths = [
+            path for path in input_paths
+            if path.suffix.lower() not in CONVERTIBLE_IMAGE_INPUTS
+        ]
+        if tool == "Convert" and unsupported_paths:
+            messagebox.showerror(
+                "Unsupported file",
+                f"Conversion supports {CONVERSION_FORMAT_TEXT} images.\n\nFirst unsupported file:\n{unsupported_paths[0]}",
+            )
             return
 
         if tool == "Convert" and output_format not in SUPPORTED_IMAGE_OUTPUTS:
             messagebox.showerror("Unsupported format", f"Choose {CONVERSION_FORMAT_TEXT} as the output format.")
             return
 
-        if tool == "Compress" and input_path.suffix.lower() not in COMPRESSIBLE_IMAGE_INPUTS:
+        if tool == "Compress" and input_paths[0].suffix.lower() not in COMPRESSIBLE_IMAGE_INPUTS:
             messagebox.showerror("Unsupported file", f"Compression supports {COMPRESSION_FORMAT_TEXT} images.")
             return
 
         busy_text = "Compressing..." if tool == "Compress" else "Converting..."
         self.convert_button.configure(state="disabled", text=busy_text)
-        self.status.set("Compressing image..." if tool == "Compress" else "Converting image...")
-        self.progress.set(0.35)
+        if is_batch:
+            self.status.set(f"Converting 0 of {len(input_paths)} images...")
+            self.progress.set(0)
+        else:
+            self.status.set("Compressing image..." if tool == "Compress" else "Converting image...")
+            self.progress.set(0.35)
 
         thread = threading.Thread(
             target=self._image_worker,
-            args=(tool, input_path, output_dir, output_format, self.quality.get()),
+            args=(tool, input_paths, output_dir, output_format, self.quality.get()),
             daemon=True,
         )
         thread.start()
@@ -313,26 +379,83 @@ class MediaUtilityApp(ctk.CTk):
     def _image_worker(
         self,
         tool: str,
-        input_path: Path,
+        input_paths: list[Path],
         output_dir: Path,
         output_format: str,
         quality: int,
     ) -> None:
-        try:
-            if tool == "Compress":
-                output_path = compress_image(input_path, output_dir=output_dir, quality=quality)
-            else:
+        if tool == "Compress":
+            try:
+                output_path = compress_image(input_paths[0], output_dir=output_dir, quality=quality)
+            except Exception as exc:
+                self.after(0, self._conversion_failed, str(exc))
+                return
+
+            self.after(0, self._conversion_finished, tool, input_paths[0], output_path)
+            return
+
+        results: list[Path] = []
+        failures: list[tuple[Path, str]] = []
+        total = len(input_paths)
+
+        for index, input_path in enumerate(input_paths, start=1):
+            try:
                 output_path = convert_image(
                     input_path,
                     output_dir=output_dir,
                     output_format=output_format,
                     quality=quality,
                 )
-        except Exception as exc:
-            self.after(0, self._conversion_failed, str(exc))
+                results.append(output_path)
+            except Exception as exc:
+                failures.append((input_path, str(exc)))
+
+            self.after(0, self._batch_progress, index, total)
+
+        if total == 1:
+            if failures:
+                self.after(0, self._conversion_failed, failures[0][1])
+            else:
+                self.after(0, self._conversion_finished, tool, input_paths[0], results[0])
             return
 
-        self.after(0, self._conversion_finished, tool, input_path, output_path)
+        self.after(0, self._batch_finished, results, failures)
+
+    def _batch_progress(self, completed: int, total: int) -> None:
+        self.progress.set(completed / total)
+        self.status.set(f"Converting {completed} of {total} images...")
+
+    def _batch_finished(self, results: list[Path], failures: list[tuple[Path, str]]) -> None:
+        self.progress.set(1 if results else 0)
+        self.convert_button.configure(state="normal", text=self._convert_button_text())
+
+        summary_lines = [
+            "Batch conversion complete.",
+            "",
+            f"Converted: {len(results)}",
+            f"Failed: {len(failures)}",
+        ]
+
+        if results:
+            summary_lines.extend(["", "Outputs:"])
+            summary_lines.extend(str(path) for path in results[:8])
+            if len(results) > 8:
+                summary_lines.append(f"...and {len(results) - 8} more")
+
+        if failures:
+            summary_lines.extend(["", "Failures:"])
+            summary_lines.extend(f"{path.name}: {error}" for path, error in failures[:5])
+            if len(failures) > 5:
+                summary_lines.append(f"...and {len(failures) - 5} more")
+
+        summary = "\n".join(summary_lines)
+        self._set_preview(summary)
+        self.status.set(f"Batch finished: {len(results)} converted, {len(failures)} failed.")
+
+        if failures:
+            messagebox.showwarning("Batch finished with errors", summary)
+        else:
+            messagebox.showinfo("Success", summary)
 
     def _conversion_finished(self, tool: str, input_path: Path, output_path: Path) -> None:
         self.progress.set(1)
@@ -387,6 +510,23 @@ class MediaUtilityApp(ctk.CTk):
         self.preview_text.delete("1.0", "end")
         self.preview_text.insert("1.0", text)
         self.preview_text.configure(state="disabled")
+
+    def _update_batch_preview(self, paths: list[Path]) -> None:
+        lines = [f"{len(paths)} images selected.", "", "Files:"]
+        lines.extend(str(path) for path in paths[:12])
+        if len(paths) > 12:
+            lines.append(f"...and {len(paths) - 12} more")
+        self._set_preview("\n".join(lines))
+
+    def _input_display_text(self) -> str:
+        if len(self.input_paths) == 1:
+            return str(self.input_paths[0])
+        return f"{len(self.input_paths)} files selected"
+
+    def _clear_selection(self) -> None:
+        self.input_paths = []
+        self.input_path.set("")
+        self._set_preview("No file selected yet.")
 
 
 def main() -> None:

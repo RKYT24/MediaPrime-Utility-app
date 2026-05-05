@@ -54,10 +54,7 @@ def convert_image(
 
     destination_dir = Path(output_dir) if output_dir else source.parent
     destination_dir.mkdir(parents=True, exist_ok=True)
-    destination = destination_dir / f"{source.stem}.{normalized_format}"
-
-    if destination.resolve() == source.resolve():
-        destination = destination_dir / f"{source.stem}_converted.{normalized_format}"
+    destination = _available_destination(source, destination_dir, normalized_format)
 
     with Image.open(source) as image:
         image_to_save = _prepare_for_format(image, normalized_format)
@@ -147,6 +144,24 @@ def batch_process(
         convert_image(path, output_dir=output_dir, output_format=output_format, quality=quality)
         for path in input_paths
     ]
+
+
+def _available_destination(source: Path, destination_dir: Path, output_format: str) -> Path:
+    destination = destination_dir / f"{source.stem}.{output_format}"
+    if destination.resolve() == source.resolve():
+        destination = destination_dir / f"{source.stem}_converted.{output_format}"
+
+    if not destination.exists():
+        return destination
+
+    base_stem = destination.stem
+    suffix = destination.suffix
+    counter = 1
+    while True:
+        candidate = destination_dir / f"{base_stem}_{counter}{suffix}"
+        if not candidate.exists():
+            return candidate
+        counter += 1
 
 
 def _prepare_for_format(image: Image.Image, output_format: str) -> Image.Image:

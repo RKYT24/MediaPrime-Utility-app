@@ -5,6 +5,7 @@ A CustomTkinter desktop app for practical media utilities.
 ## Current Feature
 
 - Image conversion between JPG, PNG, WebP, HEIC, and ICO
+- Batch image conversion
 - Image compression for JPG, PNG, and WebP
 - Output folder picker
 - Quality slider
@@ -24,7 +25,6 @@ python app.py
 
 ## Planned Features
 
-- Batch folder conversion
 - Video conversion with FFmpeg
 - Video compression
 - Audio extraction
