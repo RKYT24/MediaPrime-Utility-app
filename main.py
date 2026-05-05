@@ -13,7 +13,8 @@ from Images import (
     ensure_image_support_for_path,
     file_size_text,
 )
-from Videos import SUPPORTED_VIDEO_INPUTS, SUPPORTED_VIDEO_OUTPUTS, convert_video
+from Videos import SUPPORTED_VIDEO_INPUTS, SUPPORTED_VIDEO_OUTPUTS, compress_video, convert_video
+from Videos import SUPPORTED_AUDIO_OUTPUTS, extract_audio
 
 
 APP_TITLE = "Media Utility Desktop App"
@@ -40,18 +41,20 @@ VIDEO_INPUT = [
 ]
 OUTPUT_FORMATS = ["JPG", "PNG", "WebP", "HEIC", "ICO"]
 VIDEO_OUTPUT_FORMATS = ["MP4", "MOV", "MKV", "AVI", "WebM", "GIF"]
+AUDIO_OUTPUT_FORMATS = ["MP3", "M4A", "OGG", "Opus", "WAV"]
 CONVERSION_FORMAT_TEXT = "JPG, PNG, WebP, HEIC, or ICO"
 COMPRESSION_FORMAT_TEXT = "JPG, PNG, or WebP"
 VIDEO_FORMAT_TEXT = "MP4, MOV, MKV, AVI, WebM, MPEG, or GIF"
+AUDIO_OUTPUT_FORMAT_TEXT = "MP3, M4A, OGG, Opus, or WAV"
 
-
+# ------------------------- APP Window Start --------------------------------- #
 class MediaUtilityApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
 
         self.title(APP_TITLE)
-        self.geometry("700x660")    # w,h
-        self.minsize(650, 300)   # w,h
+        self.geometry("760x760")    # w,h ---------- general window size
+        self.minsize(650,650)   # w,h ---------- minimum window size
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
@@ -78,8 +81,8 @@ class MediaUtilityApp(ctk.CTk):
 
         title = ctk.CTkLabel(
             header,
-            text="MediaPrime: Media Utility App",
-            font=ctk.CTkFont(size=30, weight="bold"),
+            text="MediaPrime",
+            font=ctk.CTkFont(size=30, weight="bold", family="Calibri"),
         )
         title.grid(row=0, column=0, sticky="w")
 
@@ -145,7 +148,8 @@ class MediaUtilityApp(ctk.CTk):
         ).grid(row=1, column=0, sticky="w", pady=(8, 0))
 
     def _add_tool_picker(self, parent: ctk.CTkFrame) -> None:
-        ctk.CTkLabel(parent, text="Image Tool", font=ctk.CTkFont(weight="bold")).grid(
+        self.tool_label = ctk.CTkLabel(parent, text="Image Tool", font=ctk.CTkFont(weight="bold"))
+        self.tool_label.grid(
             row=0, column=0, sticky="w"
         )
         self.tool_tabs = ctk.CTkSegmentedButton(
@@ -260,7 +264,8 @@ class MediaUtilityApp(ctk.CTk):
 
         if value == VIDEO_MODE:
             self.output_format.set("MP4")
-            self.tool_tabs.configure(values=["Convert"])
+            self.tool_label.configure(text="Video Tool")
+            self.tool_tabs.configure(values=["Convert", "Compress Video", "Extract Audio"])
             self.tool_tabs.set("Convert")
             self.image_tool.set("Convert")
             self.mode_label.configure(state="disabled")
@@ -273,6 +278,7 @@ class MediaUtilityApp(ctk.CTk):
             return
 
         self.output_format.set("JPG")
+        self.tool_label.configure(text="Image Tool")
         self.tool_tabs.configure(values=["Convert", "Compress"])
         self.tool_tabs.set("Convert")
         self.image_tool.set("Convert")
@@ -293,8 +299,26 @@ class MediaUtilityApp(ctk.CTk):
         self.progress.set(0)
         self._clear_selection()
         if self.media_mode.get() == VIDEO_MODE:
-            self.tool_tabs.set("Convert")
-            self.status.set(f"Choose a {VIDEO_FORMAT_TEXT} file to convert.")
+            self.mode_label.configure(state="disabled")
+            self.conversion_mode_tabs.configure(state="disabled")
+            if value == "Compress Video":
+                self.output_format.set("MP4")
+                self.format_menu.configure(values=VIDEO_OUTPUT_FORMATS, state="normal")
+                self.input_label.configure(text="Input Video")
+                self.convert_button.configure(text="Compress Video")
+                self.status.set(f"Choose a {VIDEO_FORMAT_TEXT} file to compress.")
+            elif value == "Extract Audio":
+                self.output_format.set("MP3")
+                self.format_menu.configure(values=AUDIO_OUTPUT_FORMATS, state="normal")
+                self.input_label.configure(text="Input Video")
+                self.convert_button.configure(text="Extract Audio")
+                self.status.set(f"Choose a {VIDEO_FORMAT_TEXT} file to extract audio from.")
+            else:
+                self.output_format.set("MP4")
+                self.format_menu.configure(values=VIDEO_OUTPUT_FORMATS, state="normal")
+                self.input_label.configure(text="Input Video")
+                self.convert_button.configure(text=self._convert_button_text())
+                self.status.set(f"Choose a {VIDEO_FORMAT_TEXT} file to convert.")
             return
 
         if value == "Compress":
@@ -328,6 +352,9 @@ class MediaUtilityApp(ctk.CTk):
             self.status.set(f"Choose a {CONVERSION_FORMAT_TEXT} image to convert.")
 
     def _format_changed(self, _value: str) -> None:
+        if self.media_mode.get() == VIDEO_MODE and self.image_tool.get() in {"Compress Video", "Extract Audio"}:
+            return
+
         if self.image_tool.get() == "Convert":
             self.convert_button.configure(text=self._convert_button_text())
 
@@ -336,15 +363,30 @@ class MediaUtilityApp(ctk.CTk):
 
     def pick_file(self) -> None:
         if self.media_mode.get() == VIDEO_MODE:
-            path = filedialog.askopenfilename(title="Select video to convert", filetypes=VIDEO_INPUT)
+            tool = self.image_tool.get()
+            is_extract_audio = tool == "Extract Audio"
+            is_video_compression = tool == "Compress Video"
+            if is_extract_audio:
+                title = "Select video to extract audio"
+            elif is_video_compression:
+                title = "Select video to compress"
+            else:
+                title = "Select video to convert"
+            filetypes = VIDEO_INPUT
+            path = filedialog.askopenfilename(title=title, filetypes=filetypes)
             if not path:
                 return
 
             self.input_paths = [Path(path)]
             self.input_path.set(str(self.input_paths[0]))
-            self.status.set(f"Video selected. Ready to convert to {self.output_format.get()}.")
+            if is_extract_audio:
+                self.status.set(f"Video selected. Ready to extract {self.output_format.get()} audio.")
+            elif is_video_compression:
+                self.status.set(f"Video selected. Ready to compress to {self.output_format.get()}.")
+            else:
+                self.status.set(f"Video selected. Ready to convert to {self.output_format.get()}.")
             self.progress.set(0)
-            self._update_video_preview(self.input_paths[0])
+            self._update_audio_video_preview(self.input_paths[0], "Video")
             return
 
         if self.image_tool.get() == "Compress":
@@ -545,11 +587,26 @@ class MediaUtilityApp(ctk.CTk):
     def _conversion_failed(self, error: str) -> None:
         self.progress.set(0)
         self.status.set("Conversion failed.")
-        button_text = "Compress Image" if self.image_tool.get() == "Compress" else self._convert_button_text()
+        if self.image_tool.get() == "Compress":
+            button_text = "Compress Image"
+        elif self.image_tool.get() == "Compress Video":
+            button_text = "Compress Video"
+        elif self.image_tool.get() == "Extract Audio":
+            button_text = "Extract Audio"
+        else:
+            button_text = self._convert_button_text()
         self.convert_button.configure(state="normal", text=button_text)
         messagebox.showerror("Processing failed", error)
 
     def process_selected_video(self) -> None:
+        if self.image_tool.get() == "Compress Video":
+            self.compress_selected_video()
+            return
+
+        if self.image_tool.get() == "Extract Audio":
+            self.extract_selected_audio()
+            return
+
         input_path = self.input_paths[0] if self.input_paths else Path(self.input_path.get().strip())
         output_dir = Path(self.output_dir.get().strip())
         output_format = self.output_format.get().lower()
@@ -603,6 +660,114 @@ class MediaUtilityApp(ctk.CTk):
         )
         messagebox.showinfo("Success", f"Video converted successfully:\n{output_path}")
 
+    def compress_selected_video(self) -> None:
+        input_path = self.input_paths[0] if self.input_paths else Path(self.input_path.get().strip())
+        output_dir = Path(self.output_dir.get().strip())
+        output_format = self.output_format.get().lower()
+
+        if not str(input_path).strip() or not input_path.exists():
+            messagebox.showerror("Missing file", "Please choose a video first.")
+            return
+
+        if input_path.suffix.lower() not in SUPPORTED_VIDEO_INPUTS:
+            messagebox.showerror("Unsupported file", f"Video compression supports {VIDEO_FORMAT_TEXT} files.")
+            return
+
+        if output_format not in SUPPORTED_VIDEO_OUTPUTS:
+            messagebox.showerror("Unsupported format", "Choose MP4, MOV, MKV, AVI, WebM, or GIF as the output format.")
+            return
+
+        self.convert_button.configure(state="disabled", text="Compressing...")
+        self.status.set("Compressing video with FFmpeg...")
+        self.progress.set(0.35)
+
+        thread = threading.Thread(
+            target=self._video_compression_worker,
+            args=(input_path, output_dir, output_format, self.quality.get()),
+            daemon=True,
+        )
+        thread.start()
+
+    def _video_compression_worker(self, input_path: Path, output_dir: Path, output_format: str, quality: int) -> None:
+        try:
+            output_path = compress_video(
+                input_path,
+                output_dir=output_dir,
+                output_format=output_format,
+                quality=quality,
+            )
+        except Exception as exc:
+            self.after(0, self._conversion_failed, str(exc))
+            return
+
+        self.after(0, self._video_compression_finished, input_path, output_path)
+
+    def _video_compression_finished(self, input_path: Path, output_path: Path) -> None:
+        self.progress.set(1)
+        self.status.set(f"Saved: {output_path}")
+        self.convert_button.configure(state="normal", text="Compress Video")
+        self._set_preview(
+            "Video compression complete.\n\n"
+            f"Original: {file_size_text(input_path)}\n"
+            f"Compressed: {file_size_text(output_path)}\n\n"
+            f"Output:\n{output_path}"
+        )
+        messagebox.showinfo("Success", f"Video compressed successfully:\n{output_path}")
+
+    def extract_selected_audio(self) -> None:
+        input_path = self.input_paths[0] if self.input_paths else Path(self.input_path.get().strip())
+        output_dir = Path(self.output_dir.get().strip())
+        output_format = self.output_format.get().lower()
+
+        if not str(input_path).strip() or not input_path.exists():
+            messagebox.showerror("Missing file", "Please choose a video first.")
+            return
+
+        if input_path.suffix.lower() not in SUPPORTED_VIDEO_INPUTS:
+            messagebox.showerror("Unsupported file", f"Audio extraction supports {VIDEO_FORMAT_TEXT} files.")
+            return
+
+        if output_format not in SUPPORTED_AUDIO_OUTPUTS:
+            messagebox.showerror("Unsupported format", f"Choose {AUDIO_OUTPUT_FORMAT_TEXT} as the output format.")
+            return
+
+        self.convert_button.configure(state="disabled", text="Extracting...")
+        self.status.set("Extracting audio with FFmpeg...")
+        self.progress.set(0.35)
+
+        thread = threading.Thread(
+            target=self._audio_extraction_worker,
+            args=(input_path, output_dir, output_format, self.quality.get()),
+            daemon=True,
+        )
+        thread.start()
+
+    def _audio_extraction_worker(self, input_path: Path, output_dir: Path, output_format: str, quality: int) -> None:
+        try:
+            output_path = extract_audio(
+                input_path,
+                output_dir=output_dir,
+                output_format=output_format,
+                quality=quality,
+            )
+        except Exception as exc:
+            self.after(0, self._conversion_failed, str(exc))
+            return
+
+        self.after(0, self._audio_extraction_finished, input_path, output_path)
+
+    def _audio_extraction_finished(self, input_path: Path, output_path: Path) -> None:
+        self.progress.set(1)
+        self.status.set(f"Saved: {output_path}")
+        self.convert_button.configure(state="normal", text="Extract Audio")
+        self._set_preview(
+            "Audio extraction complete.\n\n"
+            f"Video: {file_size_text(input_path)}\n"
+            f"Audio: {file_size_text(output_path)}\n\n"
+            f"Output:\n{output_path}"
+        )
+        messagebox.showinfo("Success", f"Audio extracted successfully:\n{output_path}")
+
     def _update_preview(self, path: Path) -> None:
         try:
             from PIL import Image
@@ -622,10 +787,10 @@ class MediaUtilityApp(ctk.CTk):
 
         self._set_preview("\n".join(details))
 
-    def _update_video_preview(self, path: Path) -> None:
+    def _update_audio_video_preview(self, path: Path, media_type: str) -> None:
         details = [
             f"Name: {path.name}",
-            f"Type: {path.suffix.upper().lstrip('.') or 'Video'}",
+            f"Type: {path.suffix.upper().lstrip('.') or media_type}",
             f"File size: {file_size_text(path)}",
             f"Input: {path}",
         ]
